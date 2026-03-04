@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Sales{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fa-solid fa-chart-line" style="color:#3b82f6;margin-right:8px;"></i>Sales History</h1>
+  <p>{{ count }} transaction{{ 's' if count != 1 else '' }} found</p>
+</div>
+
+<div class="card">
+  <form method="GET" class="search-bar" style="margin-bottom:20px;">
+    <div class="search-input-wrap">
+      <i class="fa-solid fa-search"></i>
+      <input type="text" name="search" class="form-input search-input" placeholder="Search by customer..." value="{{ search_cust }}"/>
+    </div>
+    <input type="date" name="from_date" class="form-input" style="width:auto;" value="{{ from_date }}"/>
+    <span style="color:#94a3b8;align-self:center;">to</span>
+    <input type="date" name="to_date" class="form-input" style="width:auto;" value="{{ to_date }}"/>
+    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-filter"></i> Filter</button>
+    <a href="/sales" class="btn btn-outline">Reset</a>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Customer</th><th>Products</th><th>Quantities</th><th>GST (₹)</th><th>Total (₹)</th><th>Date</th><th>Time</th></tr></thead>
+      <tbody>
+        {% for row in data %}
+        <tr>
+          <td><span class="badge badge-blue">{{ row.customer }}</span></td>
+          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ row.product }}">{{ row.product }}</td>
+          <td>{{ row.quantity }}</td>
+          <td>₹{{ "%.2f"|format(row.gst) }}</td>
+          <td><strong>₹{{ "%.2f"|format(row.total) }}</strong></td>
+          <td>{{ row.sale_date }}</td>
+          <td style="color:#94a3b8;">{{ row.sale_time }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" style="text-align:center;padding:30px;color:#94a3b8;"><i class="fa-solid fa-inbox" style="font-size:1.5rem;display:block;margin-bottom:8px;"></i>No sales found.</td></tr>
+        {% endfor %}
+        {% if data %}
+        <tr style="background:#f8fafc;font-weight:700;">
+          <td colspan="4" style="text-align:right;color:#475569;">Grand Total:</td>
+          <td style="color:#10b981;">₹{{ "%.2f"|format(grand_total) }}</td>
+          <td colspan="2"></td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if data %}
+  <div style="margin-top:16px;display:flex;gap:10px;">
+    <a href="/download_sales?from_date={{ from_date }}&to_date={{ to_date }}&format=xlsx" class="btn btn-outline btn-sm">
+      <i class="fa-solid fa-file-excel" style="color:#10b981;"></i> Export Excel
+    </a>
+    <a href="/download_sales?from_date={{ from_date }}&to_date={{ to_date }}&format=csv" class="btn btn-outline btn-sm">
+      <i class="fa-solid fa-file-csv" style="color:#3b82f6;"></i> Export CSV
+    </a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

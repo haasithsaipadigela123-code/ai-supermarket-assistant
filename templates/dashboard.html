@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fa-solid fa-gauge-high" style="color:#3b82f6;margin-right:8px;"></i>Dashboard</h1>
+  <p>Welcome back, {{ session.admin_name or session.user }}! Here's your store overview.</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon blue"><i class="fa-solid fa-boxes-stacked"></i></div>
+    <div><div class="stat-value">{{ total_products }}</div><div class="stat-label">Total Products</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon green"><i class="fa-solid fa-users"></i></div>
+    <div><div class="stat-value">{{ total_customers }}</div><div class="stat-label">Customers</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon purple"><i class="fa-solid fa-indian-rupee-sign"></i></div>
+    <div><div class="stat-value">₹{{ "%.0f"|format(total_revenue) }}</div><div class="stat-label">Total Revenue</div></div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon red"><i class="fa-solid fa-triangle-exclamation"></i></div>
+    <div><div class="stat-value">{{ low_stock }}</div><div class="stat-label">Low Stock Items</div></div>
+  </div>
+</div>
+
+<div class="chart-container">
+  <div class="card-header">
+    <h2><i class="fa-solid fa-chart-line" style="color:#3b82f6;margin-right:6px;"></i>Revenue — Last 7 Days</h2>
+    <a href="/reports" class="btn btn-outline btn-sm">Full Reports</a>
+  </div>
+  <div class="chart-wrapper"><canvas id="revenueChart"></canvas></div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h2><i class="fa-solid fa-clock-rotate-left" style="color:#8b5cf6;margin-right:6px;"></i>Recent Transactions</h2>
+    <a href="/sales" class="btn btn-outline btn-sm">View All</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Customer</th><th>Product</th><th>Qty</th><th>Total</th><th>Date</th><th>Time</th></tr></thead>
+      <tbody>
+        {% for s in recent_sales %}
+        <tr>
+          <td><span class="badge badge-blue">{{ s.customer }}</span></td>
+          <td>{{ s.product }}</td>
+          <td>{{ s.quantity }}</td>
+          <td><strong>₹{{ "%.2f"|format(s.total) }}</strong></td>
+          <td>{{ s.sale_date }}</td>
+          <td style="color:#94a3b8;">{{ s.sale_time }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" style="text-align:center;padding:30px;color:#94a3b8;"><i class="fa-solid fa-inbox" style="font-size:1.5rem;display:block;margin-bottom:8px;"></i>No sales yet — start billing!</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const ctx = document.getElementById('revenueChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: {{ chart_labels|tojson }},
+    datasets: [{
+      label: 'Revenue (₹)',
+      data: {{ chart_data|tojson }},
+      borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,.1)',
+      borderWidth: 2.5, fill: true, tension: 0.4,
+      pointBackgroundColor: '#3b82f6', pointRadius: 4
+    }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,.04)' },
+           ticks: { callback: v => '₹'+v.toLocaleString('en-IN') } },
+      x: { grid: { display: false } }
+    }
+  }
+});
+</script>
+{% endblock %}

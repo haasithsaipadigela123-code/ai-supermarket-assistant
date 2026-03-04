@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Billing{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fa-solid fa-receipt" style="color:#3b82f6;margin-right:8px;"></i>Billing</h1>
+  <p>Create bills and manage transactions</p>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 360px;gap:24px;" id="billing-layout">
+  <!-- Left: Product Selection -->
+  <div>
+    <div class="card">
+      <div class="card-header"><h2>Customer Details</h2></div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Existing Customer</label>
+          <select id="cust_select" class="form-select" onchange="document.getElementById('new_cust').value=''">
+            <option value="">— Select customer —</option>
+            {% for c in customers %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Or New Customer Name</label>
+          <input type="text" id="new_cust" class="form-input" placeholder="Type new name..." oninput="document.getElementById('cust_select').value=''"/>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h2>Search & Add Products</h2></div>
+      <div class="search-input-wrap" style="margin-bottom:16px;">
+        <i class="fa-solid fa-search"></i>
+        <input type="text" id="prod-search" class="form-input search-input" placeholder="Search products to add..."/>
+      </div>
+      <div id="search-results" style="display:none;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin-bottom:16px;"></div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Product</th><th>Price</th><th>Stock</th><th>Add</th></tr></thead>
+          <tbody>
+            {% for p in products %}
+            <tr>
+              <td><strong>{{ p.brand }}</strong></td>
+              <td>₹{{ "%.2f"|format(p.price) }}</td>
+              <td>{{ p.stock }}</td>
+              <td>
+                <button class="btn btn-primary btn-sm" onclick="addToCart({{ p.id }},'{{ p.brand|e }}',{{ p.price }},{{ p.stock }})">
+                  <i class="fa-solid fa-plus"></i>
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Cart -->
+  <div>
+    <div class="card" style="position:sticky;top:80px;">
+      <div class="card-header"><h2><i class="fa-solid fa-shopping-cart" style="color:#3b82f6;margin-right:6px;"></i>Cart</h2></div>
+      <div id="cart-items"><p style="color:#94a3b8;text-align:center;padding:20px 0;font-size:.875rem;">No items added yet</p></div>
+      <div class="cart-total" id="cart-total-box" style="display:none;">
+        <span class="cart-total-label">Grand Total (incl. GST)</span>
+        <span class="cart-total-value" id="cart-grand-total">₹0.00</span>
+      </div>
+      <form id="bill-form" method="POST" style="margin-top:14px;">
+        <input type="hidden" name="customer" id="form-customer"/>
+        <input type="hidden" name="new_customer" id="form-new-customer"/>
+        <div id="hidden-inputs"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;" onclick="prepareForm()">
+          <i class="fa-solid fa-file-pdf"></i> Generate Bill PDF
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+let cart = {};
+function addToCart(id, name, price, stock) {
+  if (cart[id]) { cart[id].qty = Math.min(cart[id].qty + 1, stock); }
+  else { cart[id] = {name, price, stock, qty: 1}; }
+  renderCart();
+}
+function removeFromCart(id) { delete cart[id]; renderCart(); }
+function changeQty(id, delta) {
+  if (!cart[id]) return;
+  cart[id].qty = Math.max(1, Math.min(cart[id].qty + delta, cart[id].stock));
+  renderCart();
+}
+function renderCart() {
+  const el = document.getElementById('cart-items');
+  const tb = document.getElementById('cart-total-box');
+  const gt = document.getElementById('cart-grand-total');
+  const keys = Object.keys(cart);
+  if (!keys.length) {
+    el.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px 0;font-size:.875rem;">No items added yet</p>';
+    tb.style.display = 'none'; return;
+  }
+  let html = '', total = 0;
+  keys.forEach(id => {
+    const item = cart[id];
+    const base = item.price * item.qty;
+    const gst = base * 0.05;
+    const t = base + gst;
+    total += t;
+    html += `<div class="cart-item">
+      <div class="cart-item-name">${item.name}<br><small style="color:#94a3b8;">₹${item.price} × ${item.qty} + 5% GST</small></div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="changeQty(${id},-1)" style="padding:4px 8px;">−</button>
+        <span style="font-weight:600;min-width:20px;text-align:center;">${item.qty}</span>
+        <button type="button" class="btn btn-outline btn-sm" onclick="changeQty(${id},1)" style="padding:4px 8px;">+</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="removeFromCart(${id})" style="padding:4px 8px;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </div>
+    <div style="text-align:right;margin-bottom:8px;font-size:.8rem;color:#64748b;">Total: <strong>₹${t.toFixed(2)}</strong></div>`;
+  });
+  el.innerHTML = html;
+  gt.textContent = '₹' + total.toFixed(2);
+  tb.style.display = 'flex';
+}
+function prepareForm() {
+  const sel = document.getElementById('cust_select').value;
+  const newc = document.getElementById('new_cust').value.trim();
+  document.getElementById('form-customer').value = sel;
+  document.getElementById('form-new-customer').value = newc;
+  const hi = document.getElementById('hidden-inputs');
+  hi.innerHTML = '';
+  Object.keys(cart).forEach(id => {
+    hi.innerHTML += `<input type="hidden" name="product" value="${id}"/>`;
+    hi.innerHTML += `<input type="hidden" name="qty_${id}" value="${cart[id].qty}"/>`;
+  });
+}
+// Live product search
+let searchTimer;
+document.getElementById('prod-search').addEventListener('input', function(){
+  clearTimeout(searchTimer);
+  const q = this.value.trim();
+  const res = document.getElementById('search-results');
+  if (!q) { res.style.display='none'; return; }
+  searchTimer = setTimeout(async ()=>{
+    const data = await (await fetch('/search_products?q='+encodeURIComponent(q))).json();
+    if (!data.products.length) { res.style.display='none'; return; }
+    res.innerHTML = data.products.map(p=>
+      `<div onclick="addToCart(${p.id},'${p.brand.replace("'","\\'")}',${p.price},${p.stock})"
+        style="padding:10px 14px;cursor:pointer;border-bottom:1px solid #f1f5f9;font-size:.875rem;transition:background .15s;"
+        onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background=''"
+      ><strong>${p.brand}</strong> — ₹${p.price.toFixed(2)} <span style="color:#94a3b8;float:right;">${p.stock} in stock</span></div>`
+    ).join('');
+    res.style.display='block';
+  }, 250);
+});
+</script>
+{% endblock %}

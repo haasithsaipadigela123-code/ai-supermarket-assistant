@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block title %}Products{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fa-solid fa-boxes-stacked" style="color:#3b82f6;margin-right:8px;"></i>Products</h1>
+  <p>Manage your product inventory</p>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="document.getElementById('addModal').classList.remove('hidden')">
+        <i class="fa-solid fa-plus"></i> Add Product
+      </button>
+      <button class="btn btn-outline" onclick="document.getElementById('csvModal').classList.remove('hidden')">
+        <i class="fa-solid fa-file-csv"></i> Import CSV
+      </button>
+    </div>
+  </div>
+  <form method="GET" class="search-bar">
+    <div class="search-input-wrap">
+      <i class="fa-solid fa-search"></i>
+      <input type="text" name="q" class="form-input search-input" placeholder="Search products..." value="{{ search }}"/>
+    </div>
+    <select name="sort" class="form-select" style="width:auto;">
+      <option value="id" {% if sort=='id' %}selected{% endif %}>Sort: Default</option>
+      <option value="brand" {% if sort=='brand' %}selected{% endif %}>Name A-Z</option>
+      <option value="price" {% if sort=='price' %}selected{% endif %}>Price</option>
+      <option value="stock" {% if sort=='stock' %}selected{% endif %}>Stock</option>
+      <option value="expiry" {% if sort=='expiry' %}selected{% endif %}>Expiry</option>
+    </select>
+    <button type="submit" class="btn btn-outline"><i class="fa-solid fa-filter"></i> Filter</button>
+  </form>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>#</th><th>Product Name</th><th>Category</th><th>Price (₹)</th><th>Stock</th><th>Expiry</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for p in products %}
+        <tr>
+          <td style="color:#94a3b8;">{{ p.id }}</td>
+          <td><strong>{{ p.brand }}</strong></td>
+          <td><span class="badge badge-blue">{{ p.category or 'General' }}</span></td>
+          <td>₹{{ "%.2f"|format(p.price) }}</td>
+          <td>
+            {% if p.stock < threshold %}
+              <span style="color:#ef4444;font-weight:600;">{{ p.stock }} <i class="fa-solid fa-triangle-exclamation fa-xs"></i></span>
+            {% else %}
+              {{ p.stock }}
+            {% endif %}
+          </td>
+          <td>{{ p.expiry or '—' }}</td>
+          <td>
+            {% if p.stock < threshold %}
+              <span class="badge badge-red">Low Stock</span>
+            {% else %}
+              <span class="badge badge-green">OK</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="btn-group">
+              <button class="btn btn-outline btn-sm" onclick="openEdit({{ p.id }},'{{ p.brand|e }}','{{ p.category or 'General' }}',{{ p.price }},{{ p.stock }},'{{ p.expiry or '' }}')">
+                <i class="fa-solid fa-pen"></i>
+              </button>
+              <form method="POST" action="/delete_product" style="display:inline;" onsubmit="return confirm('Delete {{ p.brand|e }}?')">
+                <input type="hidden" name="product_id" value="{{ p.id }}"/>
+                <button type="submit" class="btn btn-danger btn-sm"><i class="fa-solid fa-trash"></i></button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" style="text-align:center;padding:30px;color:#94a3b8;">
+          <i class="fa-solid fa-inbox" style="font-size:1.5rem;display:block;margin-bottom:8px;"></i>
+          No products found. Add one to get started!
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Add Product Modal -->
+<div class="modal-overlay hidden" id="addModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fa-solid fa-plus-circle" style="color:#3b82f6;margin-right:8px;"></i>Add Product</h3>
+      <button class="modal-close" onclick="document.getElementById('addModal').classList.add('hidden')">&times;</button>
+    </div>
+    <form method="POST">
+      <input type="hidden" name="action" value="add"/>
+      <div class="form-row form-row-2">
+        <div class="form-group"><label class="form-label">Product Name *</label><input type="text" name="brand" class="form-input" placeholder="e.g. Maggi Noodles" required/></div>
+        <div class="form-group"><label class="form-label">Category</label><input type="text" name="category" class="form-input" placeholder="e.g. Snacks" value="General"/></div>
+      </div>
+      <div class="form-row form-row-3">
+        <div class="form-group"><label class="form-label">Price (₹) *</label><input type="number" step="0.01" min="0" name="price" class="form-input" placeholder="0.00" required/></div>
+        <div class="form-group"><label class="form-label">Stock *</label><input type="number" min="0" name="stock" class="form-input" placeholder="0" required/></div>
+        <div class="form-group"><label class="form-label">Expiry Date</label><input type="date" name="expiry" class="form-input"/></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('addModal').classList.add('hidden')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Add Product</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Product Modal -->
+<div class="modal-overlay hidden" id="editModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fa-solid fa-pen" style="color:#f97316;margin-right:8px;"></i>Edit Product</h3>
+      <button class="modal-close" onclick="document.getElementById('editModal').classList.add('hidden')">&times;</button>
+    </div>
+    <form method="POST">
+      <input type="hidden" name="action" value="update"/>
+      <input type="hidden" name="id" id="edit_id"/>
+      <div class="form-row form-row-2">
+        <div class="form-group"><label class="form-label">Product Name *</label><input type="text" name="brand" id="edit_brand" class="form-input" required/></div>
+        <div class="form-group"><label class="form-label">Category</label><input type="text" name="category" id="edit_category" class="form-input"/></div>
+      </div>
+      <div class="form-row form-row-3">
+        <div class="form-group"><label class="form-label">Price (₹)</label><input type="number" step="0.01" min="0" name="price" id="edit_price" class="form-input"/></div>
+        <div class="form-group"><label class="form-label">Stock</label><input type="number" min="0" name="stock" id="edit_stock" class="form-input"/></div>
+        <div class="form-group"><label class="form-label">Expiry Date</label><input type="date" name="expiry" id="edit_expiry" class="form-input"/></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('editModal').classList.add('hidden')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- CSV Import Modal -->
+<div class="modal-overlay hidden" id="csvModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3><i class="fa-solid fa-file-csv" style="color:#10b981;margin-right:8px;"></i>Import Products via CSV</h3>
+      <button class="modal-close" onclick="document.getElementById('csvModal').classList.add('hidden')">&times;</button>
+    </div>
+    <div class="alert-box info" style="margin-bottom:16px;">
+      <i class="fa-solid fa-info-circle" style="color:#3b82f6;"></i>
+      <div><strong>CSV Format:</strong> brand, category, price, stock, expiry<br><small style="color:#64748b;">Headers must match exactly. Expiry format: YYYY-MM-DD</small></div>
+    </div>
+    <form method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="csv_import"/>
+      <div class="form-group"><label class="form-label">Select CSV File</label><input type="file" name="csv_file" class="form-input" accept=".csv" required/></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('csvModal').classList.add('hidden')">Cancel</button>
+        <button type="submit" class="btn btn-success"><i class="fa-solid fa-upload"></i> Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openEdit(id,brand,category,price,stock,expiry){
+  document.getElementById('edit_id').value=id;
+  document.getElementById('edit_brand').value=brand;
+  document.getElementById('edit_category').value=category;
+  document.getElementById('edit_price').value=price;
+  document.getElementById('edit_stock').value=stock;
+  document.getElementById('edit_expiry').value=expiry;
+  document.getElementById('editModal').classList.remove('hidden');
+}
+</script>
+{% endblock %}

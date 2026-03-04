@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fa-solid fa-chart-bar" style="color:#3b82f6;margin-right:8px;"></i>Reports</h1>
+  <p>Visualize your sales data</p>
+</div>
+
+<div class="card">
+  <div class="card-header"><h2>Generate Sales Chart</h2></div>
+  <form method="GET" class="search-bar" style="margin-bottom:0;">
+    <input type="date" name="from_date" class="form-input" style="width:auto;" value="{{ from_date }}"/>
+    <span style="color:#94a3b8;align-self:center;">to</span>
+    <input type="date" name="to_date" class="form-input" style="width:auto;" value="{{ to_date }}"/>
+    <select name="chart_type" class="form-select" style="width:auto;">
+      <option value="bar" {% if chart_type=='bar' %}selected{% endif %}>Bar Chart</option>
+      <option value="line" {% if chart_type=='line' %}selected{% endif %}>Line Chart</option>
+      <option value="pie" {% if chart_type=='pie' %}selected{% endif %}>Pie Chart</option>
+    </select>
+    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-chart-bar"></i> Generate</button>
+    <a href="/reports" class="btn btn-outline">Reset</a>
+  </form>
+</div>
+
+{% if message %}
+<div class="alert-box info"><i class="fa-solid fa-info-circle" style="color:#3b82f6;"></i><span>{{ message }}</span></div>
+{% endif %}
+
+{% if chart_path %}
+<div class="card">
+  <div class="card-header">
+    <h2>Sales Chart</h2>
+    <div class="btn-group">
+      <a href="/download_report_pdf" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-pdf"></i> Download PDF</a>
+    </div>
+  </div>
+  <img src="{{ url_for('static', filename='charts/report.png') }}?t={{ range(99999)|random }}" style="max-width:100%;border-radius:8px;" alt="Sales Chart"/>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header"><h2><i class="fa-solid fa-upload" style="color:#8b5cf6;margin-right:6px;"></i>Custom Dataset Visualization</h2></div>
+  <div class="alert-box info" style="margin-bottom:16px;">
+    <i class="fa-solid fa-info-circle" style="color:#3b82f6;"></i>
+    <span>Upload a CSV with at least 2 columns. First column = X axis labels, Second column = Y axis values.</span>
+  </div>
+  <form method="POST" enctype="multipart/form-data" class="search-bar" style="margin-bottom:0;">
+    <input type="file" name="dataset" class="form-input" accept=".csv" style="flex:1;" required/>
+    <button type="submit" class="btn btn-outline"><i class="fa-solid fa-upload"></i> Upload & Visualize</button>
+  </form>
+</div>
+{% endblock %}

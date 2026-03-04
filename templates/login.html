@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Login — SuperMart AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <i class="fa-solid fa-cart-shopping"></i>
+      <h1>SuperMart AI</h1>
+      <p>Sign in to your dashboard</p>
+    </div>
+    {% if error %}
+    <div class="alert-box danger" style="margin-bottom:16px;">
+      <i class="fa-solid fa-circle-exclamation" style="color:#ef4444;"></i>
+      <span>{{ error }}</span>
+    </div>
+    {% endif %}
+    <form method="POST">
+      <div class="form-group">
+        <label class="form-label">Username</label>
+        <input type="text" name="username" class="form-input" placeholder="Enter username" required autocomplete="username"/>
+      </div>
+      <div class="form-group" style="position:relative;">
+        <label class="form-label">Password</label>
+        <input type="password" name="password" class="form-input" id="pw" placeholder="Enter password" required autocomplete="current-password"/>
+        <button type="button" onclick="togglePw()" style="position:absolute;right:12px;bottom:10px;background:none;border:none;cursor:pointer;color:#94a3b8;"><i class="fa-regular fa-eye" id="pw-icon"></i></button>
+      </div>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;">
+        <i class="fa-solid fa-right-to-bracket"></i> Sign In
+      </button>
+    </form>
+    <div class="auth-footer">
+      Don't have an account? <a href="/register">Create one</a>
+    </div>
+  </div>
+  <script>
+    function togglePw(){
+      const pw=document.getElementById('pw'), ic=document.getElementById('pw-icon');
+      pw.type=pw.type==='password'?'text':'password';
+      ic.className=pw.type==='password'?'fa-regular fa-eye':'fa-regular fa-eye-slash';
+    }
+  </script>
+</body>
+</html>

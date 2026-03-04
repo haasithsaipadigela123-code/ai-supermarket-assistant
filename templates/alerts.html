@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fa-solid fa-bell" style="color:#f97316;margin-right:8px;"></i>Alerts</h1>
+  <p>Monitor low stock and expiring products</p>
+</div>
+
+<div class="card">
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('all',this)">All Alerts <span class="badge badge-red" style="margin-left:6px;">{{ all_alerts|length }}</span></button>
+    <button class="tab-btn" onclick="showTab('low',this)">Low Stock <span class="badge badge-orange" style="margin-left:6px;">{{ low_stock|length }}</span></button>
+    <button class="tab-btn" onclick="showTab('expiring',this)">Expiring Soon <span class="badge badge-purple" style="margin-left:6px;">{{ expiring|length }}</span></button>
+  </div>
+
+  <div class="tab-content active" id="tab-all">
+    {% if all_alerts %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Product</th><th>Stock</th><th>Expiry</th><th>Days Left</th><th>Alert Type</th></tr></thead>
+        <tbody>
+          {% for a in all_alerts %}
+          <tr>
+            <td><strong>{{ a[0] }}</strong></td>
+            <td>
+              {% if a[1] < threshold %}
+                <span class="badge badge-red"><i class="fa-solid fa-arrow-down"></i> {{ a[1] }}</span>
+              {% else %}
+                {{ a[1] }}
+              {% endif %}
+            </td>
+            <td>{{ a[2] or '—' }}</td>
+            <td>
+              {% if a[3] is not none %}
+                {% if a[3] <= 7 %}<span class="badge badge-red">{{ a[3]|int }} days</span>
+                {% elif a[3] <= 30 %}<span class="badge badge-orange">{{ a[3]|int }} days</span>
+                {% else %}<span class="badge badge-green">{{ a[3]|int }} days</span>{% endif %}
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if a[1] < threshold %}<span class="badge badge-red">Low Stock</span>{% endif %}
+              {% if a[3] is not none and a[3] <= exp_days %}<span class="badge badge-orange">Expiring</span>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:40px;color:#94a3b8;">
+      <i class="fa-solid fa-check-circle" style="font-size:2rem;color:#10b981;display:block;margin-bottom:10px;"></i>
+      <strong>All clear!</strong> No alerts at this time.
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="tab-content" id="tab-low">
+    {% if low_stock %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Product</th><th>Current Stock</th><th>Threshold</th><th>Action Needed</th></tr></thead>
+        <tbody>
+          {% for a in low_stock %}
+          <tr>
+            <td><strong>{{ a[0] }}</strong></td>
+            <td><span class="badge badge-red">{{ a[1] }}</span></td>
+            <td>{{ threshold }}</td>
+            <td><span class="badge badge-orange">Reorder Now</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:40px;color:#94a3b8;">No low-stock items.</div>
+    {% endif %}
+  </div>
+
+  <div class="tab-content" id="tab-expiring">
+    {% if expiring %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Product</th><th>Stock</th><th>Expiry Date</th><th>Days Remaining</th></tr></thead>
+        <tbody>
+          {% for a in expiring %}
+          <tr>
+            <td><strong>{{ a[0] }}</strong></td>
+            <td>{{ a[1] }}</td>
+            <td>{{ a[2] }}</td>
+            <td>{% if a[3] <= 7 %}<span class="badge badge-red">{{ a[3]|int }} days</span>{% elif a[3] <= 14 %}<span class="badge badge-orange">{{ a[3]|int }} days</span>{% else %}<span class="badge badge-purple">{{ a[3]|int }} days</span>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:40px;color:#94a3b8;">No items expiring soon.</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+{% endblock %}

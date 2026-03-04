@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}AI Predictions{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fa-solid fa-brain" style="color:#8b5cf6;margin-right:8px;"></i>AI Predictions</h1>
+  <p>Machine learning-powered forecasts for your supermarket</p>
+</div>
+
+<!-- Revenue Goal Tracker -->
+<div class="card" style="border-left:4px solid #3b82f6;">
+  <div class="card-header">
+    <h2><i class="fa-solid fa-bullseye" style="color:#3b82f6;margin-right:6px;"></i>Monthly Revenue Goal</h2>
+    {% if not goal %}<a href="/settings" class="btn btn-outline btn-sm"><i class="fa-solid fa-gear"></i> Set Goal</a>{% endif %}
+  </div>
+  {% if goal %}
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:16px;">
+    <div style="text-align:center;">
+      <div style="font-size:.8rem;color:#64748b;margin-bottom:4px;">Current Month Revenue</div>
+      <div style="font-size:1.5rem;font-weight:700;color:#1e293b;">₹{{ "%.0f"|format(month_rev) }}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:.8rem;color:#64748b;margin-bottom:4px;">Monthly Goal</div>
+      <div style="font-size:1.5rem;font-weight:700;color:#3b82f6;">₹{{ "%.0f"|format(goal) }}</div>
+    </div>
+    <div style="text-align:center;">
+      <div style="font-size:.8rem;color:#64748b;margin-bottom:4px;">Projected (End of Month)</div>
+      <div style="font-size:1.5rem;font-weight:700;color:{% if on_track %}#10b981{% else %}#ef4444{% endif %};">₹{{ "%.0f"|format(projected) }}</div>
+    </div>
+  </div>
+  <div style="margin-bottom:8px;display:flex;justify-content:space-between;font-size:.8rem;color:#64748b;">
+    <span>Progress: {{ goal_pct }}%</span>
+    {% if on_track %}<span style="color:#10b981;font-weight:600;"><i class="fa-solid fa-check-circle"></i> On track to meet goal!</span>
+    {% elif on_track == false %}<span style="color:#ef4444;font-weight:600;"><i class="fa-solid fa-exclamation-circle"></i> Below target — boost sales!</span>{% endif %}
+  </div>
+  <div class="progress-bar">
+    <div class="progress-fill {% if goal_pct >= 100 %}progress-green{% elif goal_pct >= 60 %}progress-blue{% else %}progress-red{% endif %}" style="width:{{ goal_pct }}%;"></div>
+  </div>
+  {% else %}
+  <p style="color:#94a3b8;font-size:.875rem;">Set a monthly revenue goal in <a href="/settings" style="color:#3b82f6;">Settings</a> to track your progress here.</p>
+  {% endif %}
+</div>
+
+<!-- Revenue Forecast Chart -->
+<div class="chart-container">
+  <div class="card-header">
+    <h2><i class="fa-solid fa-chart-line" style="color:#8b5cf6;margin-right:6px;"></i>7-Day Revenue Forecast</h2>
+    <span class="badge badge-purple">AI Powered</span>
+  </div>
+  {% if not revenue_pred.has_data %}
+  <div class="alert-box info"><i class="fa-solid fa-info-circle" style="color:#3b82f6;"></i><span>Add at least 3 days of sales data to see revenue forecasts.</span></div>
+  {% else %}
+  <div class="chart-wrapper"><canvas id="forecastChart"></canvas></div>
+  {% endif %}
+</div>
+
+<!-- Demand Forecasting Table -->
+<div class="card">
+  <div class="card-header">
+    <h2><i class="fa-solid fa-boxes-stacked" style="color:#10b981;margin-right:6px;"></i>Product Demand Forecast (Next 7 Days)</h2>
+    <span class="badge badge-green">Predictive</span>
+  </div>
+  {% if demand %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Product</th><th>Current Stock</th><th>Avg Daily Sales</th><th>Predicted 7-Day Demand</th><th>Recommended Restock</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for d in demand %}
+        <tr>
+          <td><strong>{{ d.brand }}</strong></td>
+          <td>
+            {% if d.status == 'danger' %}<span class="badge badge-red">{{ d.stock }}</span>
+            {% elif d.status == 'warning' %}<span class="badge badge-orange">{{ d.stock }}</span>
+            {% else %}{{ d.stock }}{% endif %}
+          </td>
+          <td>{{ d.avg_daily }}</td>
+          <td>{{ d.predicted_7 }}</td>
+          <td>
+            {% if d.restock_qty > 0 %}<strong style="color:#ef4444;">+{{ d.restock_qty|int }} units</strong>
+            {% else %}<span style="color:#10b981;">Sufficient</span>{% endif %}
+          </td>
+          <td>
+            {% if d.status == 'danger' %}<span class="badge badge-red"><i class="fa-solid fa-triangle-exclamation"></i> Critical</span>
+            {% elif d.status == 'warning' %}<span class="badge badge-orange"><i class="fa-solid fa-exclamation"></i> Low</span>
+            {% else %}<span class="badge badge-green"><i class="fa-solid fa-check"></i> OK</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color:#94a3b8;text-align:center;padding:20px;">No product data available.</p>
+  {% endif %}
+</div>
+
+<!-- Two-column: Trends + Restock -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+  <!-- Trends -->
+  <div class="card">
+    <div class="card-header">
+      <h2><i class="fa-solid fa-arrow-trend-up" style="color:#f59e0b;margin-right:6px;"></i>Product Trends</h2>
+    </div>
+    {% if trends %}
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      {% for t in trends %}
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8fafc;border-radius:8px;">
+        <div>
+          <strong>{{ t.product }}</strong>
+          <div style="font-size:.8rem;color:#64748b;">{{ t.total_sold }} units total</div>
+        </div>
+        <span class="trend-arrow {{ t.direction }}" style="font-size:1.3rem;font-weight:700;">{{ t.arrow }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p style="color:#94a3b8;text-align:center;padding:20px;">No trend data available yet.</p>
+    {% endif %}
+  </div>
+
+  <!-- Restock Recommendations -->
+  <div class="card">
+    <div class="card-header">
+      <h2><i class="fa-solid fa-truck" style="color:#ef4444;margin-right:6px;"></i>Restock Urgency</h2>
+    </div>
+    {% if restock %}
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      {% for r in restock %}
+      <div class="alert-box {% if r.status == 'danger' %}danger{% else %}warning{% endif %}">
+        <i class="fa-solid {% if r.status == 'danger' %}fa-circle-exclamation{% else %}fa-triangle-exclamation{% endif %}" style="color:{% if r.status == 'danger' %}#ef4444{% else %}#f97316{% endif %};margin-top:2px;"></i>
+        <div style="flex:1;">
+          <strong>{{ r.brand }}</strong>
+          <div style="font-size:.8rem;color:#64748b;">
+            {{ r.stock }} in stock · {{ r.days_until_stockout }}{% if r.days_until_stockout < 999 %} days until stockout{% else %}+ days{% endif %}
+          </div>
+        </div>
+        <span class="badge {% if r.status == 'danger' %}badge-red{% else %}badge-orange{% endif %}">Order +{{ r.restock_qty|int }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:30px;color:#94a3b8;">
+      <i class="fa-solid fa-check-circle" style="font-size:1.5rem;color:#10b981;display:block;margin-bottom:8px;"></i>
+      All products are well-stocked!
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+{% if revenue_pred.has_data %}
+const ctx = document.getElementById('forecastChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: [...{{ revenue_pred.historical_dates|tojson }}, ...{{ revenue_pred.dates|tojson }}],
+    datasets: [
+      {
+        label: 'Historical Revenue',
+        data: [...{{ revenue_pred.historical|tojson }}, ...Array({{ revenue_pred.dates|length }}).fill(null)],
+        borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,.1)',
+        borderWidth: 2.5, fill: true, tension: 0.4, pointRadius: 3
+      },
+      {
+        label: 'Predicted Revenue',
+        data: [...Array({{ revenue_pred.historical|length }}).fill(null), {{ revenue_pred.historical[-1] if revenue_pred.historical else 0 }}, ...{{ revenue_pred.predicted|tojson }}],
+        borderColor: '#8b5cf6', backgroundColor: 'rgba(139,92,246,.08)',
+        borderWidth: 2.5, borderDash: [6,3], fill: true, tension: 0.4, pointRadius: 3,
+        pointStyle: 'triangle'
+      }
+    ]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: 'top' } },
+    scales: {
+      y: { beginAtZero: true, ticks: { callback: v => '₹'+v.toLocaleString('en-IN') } },
+      x: { grid: { display: false } }
+    }
+  }
+});
+{% endif %}
+</script>
+{% endblock %}

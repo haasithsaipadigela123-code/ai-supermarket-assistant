@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1><i class="fa-solid fa-gear" style="color:#3b82f6;margin-right:8px;"></i>Settings</h1>
+  <p>Manage your store configuration and preferences</p>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+  <!-- Shop Info -->
+  <div class="card">
+    <div class="card-header"><h2><i class="fa-solid fa-store" style="color:#3b82f6;margin-right:6px;"></i>Store Information</h2></div>
+    <form method="POST">
+      <input type="hidden" name="action" value="update_shop"/>
+      <div class="form-group">
+        <label class="form-label">Supermarket Name</label>
+        <input type="text" name="supermarket_name" class="form-input" value="{{ s.supermarket_name }}" required/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Address</label>
+        <input type="text" name="address" class="form-input" value="{{ s.address }}" placeholder="Full address"/>
+      </div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input type="text" name="phone" class="form-input" value="{{ s.phone }}" placeholder="+91 ..."/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">GST Number</label>
+          <input type="text" name="gst_no" class="form-input" value="{{ s.gst_no }}" placeholder="GST No."/>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Save Store Info</button>
+    </form>
+  </div>
+
+  <!-- Change Password -->
+  <div class="card">
+    <div class="card-header"><h2><i class="fa-solid fa-lock" style="color:#ef4444;margin-right:6px;"></i>Change Password</h2></div>
+    <form method="POST">
+      <input type="hidden" name="action" value="change_password"/>
+      <div class="form-group">
+        <label class="form-label">Current Password</label>
+        <input type="password" name="old_password" class="form-input" required/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Password</label>
+        <input type="password" name="new_password" class="form-input" required minlength="6"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm New Password</label>
+        <input type="password" name="confirm_password" class="form-input" required/>
+      </div>
+      <button type="submit" class="btn btn-danger"><i class="fa-solid fa-key"></i> Update Password</button>
+    </form>
+  </div>
+
+  <!-- Preferences -->
+  <div class="card">
+    <div class="card-header"><h2><i class="fa-solid fa-sliders" style="color:#10b981;margin-right:6px;"></i>Preferences & Goals</h2></div>
+    <form method="POST">
+      <input type="hidden" name="action" value="update_prefs"/>
+      <div class="form-group">
+        <label class="form-label">Monthly Revenue Goal (₹)</label>
+        <input type="number" min="0" step="100" name="revenue_goal" class="form-input" value="{{ s.revenue_goal }}" placeholder="0"/>
+        <small style="color:#94a3b8;">Used in AI Predictions tab to track goal progress</small>
+      </div>
+      <div class="form-row form-row-2">
+        <div class="form-group">
+          <label class="form-label">Low Stock Threshold</label>
+          <input type="number" min="1" name="low_stock_threshold" class="form-input" value="{{ s.low_stock_threshold }}"/>
+          <small style="color:#94a3b8;">Alert if stock falls below this</small>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Expiry Warning (Days)</label>
+          <input type="number" min="1" name="expiry_warning_days" class="form-input" value="{{ s.expiry_warning_days }}"/>
+          <small style="color:#94a3b8;">Alert if expiry within N days</small>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-success"><i class="fa-solid fa-save"></i> Save Preferences</button>
+    </form>
+  </div>
+
+  <!-- Account Info -->
+  <div class="card" style="background:linear-gradient(135deg,#eff6ff,#f0fdf4);">
+    <div class="card-header"><h2><i class="fa-solid fa-user-circle" style="color:#8b5cf6;margin-right:6px;"></i>Account Info</h2></div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#fff;border-radius:8px;">
+        <span style="color:#64748b;font-size:.875rem;">Admin Name</span>
+        <strong>{{ s.admin_name }}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#fff;border-radius:8px;">
+        <span style="color:#64748b;font-size:.875rem;">Username</span>
+        <strong>{{ session.user }}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#fff;border-radius:8px;">
+        <span style="color:#64748b;font-size:.875rem;">Database</span>
+        <strong>{{ session.db_name }}</strong>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 14px;background:#fff;border-radius:8px;">
+        <span style="color:#64748b;font-size:.875rem;">Supermarket</span>
+        <strong>{{ s.supermarket_name }}</strong>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
