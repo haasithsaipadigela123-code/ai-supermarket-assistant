@@ -72,7 +72,9 @@ class Sale(db.Model):
     sale_date = db.Column(db.Date)
     sale_time = db.Column(db.Time)
 
-with app.app_context():
+# ── KEY FIX: use before_request instead of with app_context at import time ──
+@app.before_request
+def create_tables():
     db.create_all()
 
 # ─── Auth ─────────────────────────────────────────────────────
@@ -116,6 +118,7 @@ def login():
                 "revenue_goal": user.revenue_goal or 0,
                 "low_stock_threshold": user.low_stock_threshold or 10,
                 "expiry_warning_days": user.expiry_warning_days or 30,
+                "db_name": "Neon PostgreSQL",
             })
             return redirect("/dashboard")
         return render_template("login.html", error="Invalid username or password")
@@ -393,6 +396,9 @@ def reports():
     aid=session["admin_id"]; chart_path=None; message=None
     from_date=request.args.get("from_date",""); to_date=request.args.get("to_date","")
     chart_type=request.args.get("chart_type","bar")
+    charts_dir = os.path.join(app.root_path, "static", "charts")
+    os.makedirs(charts_dir, exist_ok=True)
+    chart_file = os.path.join(charts_dir, "report.png")
     if request.method=="POST" and "dataset" in request.files:
         f=request.files["dataset"]
         if f.filename:
@@ -402,8 +408,8 @@ def reports():
                 fig,ax=plt.subplots(figsize=(10,5)); ax.bar(df[x],df[y])
                 ax.set_xlabel(x); ax.set_ylabel(y); ax.set_title("Custom Dataset")
                 plt.xticks(rotation=45,ha="right"); plt.tight_layout()
-                os.makedirs("static/charts",exist_ok=True)
-                chart_path="static/charts/report.png"; plt.savefig(chart_path); plt.close()
+                plt.savefig(chart_file); plt.close()
+                chart_path="static/charts/report.png"
             else:
                 message="Dataset needs at least 2 columns"
     else:
@@ -426,8 +432,8 @@ def reports():
                 ax.set_xlabel("Product"); ax.set_ylabel("Units Sold"); plt.xticks(rotation=45,ha="right")
             title=f"Sales Report ({from_date} to {to_date})" if from_date and to_date else "Sales Report (All Time)"
             ax.set_title(title); plt.tight_layout()
-            os.makedirs("static/charts",exist_ok=True)
-            chart_path="static/charts/report.png"; plt.savefig(chart_path); plt.close()
+            plt.savefig(chart_file); plt.close()
+            chart_path="static/charts/report.png"
             session["report_from"]=from_date; session["report_to"]=to_date
         else:
             message="No sales data available."
@@ -437,8 +443,8 @@ def reports():
 @app.route("/download_report_pdf")
 @login_required
 def download_report_pdf():
-    chart_path="static/charts/report.png"
-    if not os.path.exists(chart_path):
+    chart_file = os.path.join(app.root_path, "static", "charts", "report.png")
+    if not os.path.exists(chart_file):
         flash("Generate a chart first.","error"); return redirect("/reports")
     from_date=session.get("report_from",""); to_date=session.get("report_to","")
     sub=f"Sales Report ({from_date} to {to_date})" if from_date and to_date else f"Sales Report - {datetime.today().strftime('%B %Y')}"
@@ -446,7 +452,7 @@ def download_report_pdf():
     styles=getSampleStyleSheet(); els=[]
     els.append(Paragraph(session.get("supermarket","Supermarket"),styles["Title"]))
     els.append(Spacer(1,10)); els.append(Paragraph(sub,styles["Heading2"]))
-    els.append(Spacer(1,20)); els.append(Image(chart_path,width=400,height=250))
+    els.append(Spacer(1,20)); els.append(Image(chart_file,width=400,height=250))
     doc.build(els); buf.seek(0)
     return send_file(buf,as_attachment=True,download_name="sales_report.pdf",mimetype="application/pdf")
 
