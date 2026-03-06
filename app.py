@@ -72,7 +72,6 @@ class Sale(db.Model):
     sale_date = db.Column(db.Date)
     sale_time = db.Column(db.Time)
 
-# ── KEY FIX: use before_request instead of with app_context at import time ──
 @app.before_request
 def create_tables():
     db.create_all()
@@ -102,6 +101,27 @@ def get_alert_count():
     except Exception:
         return 0
 
+# ─── PDF helper — works on ALL servers (Render, Vercel, local) ───
+def pdf_to_bytes(pdf):
+    """
+    Safely convert FPDF object to bytes.
+    Handles both fpdf2 (returns bytearray) and older fpdf (returns str).
+    Never writes to disk.
+    """
+    try:
+        result = pdf.output(dest="S")
+        if isinstance(result, (bytes, bytearray)):
+            return bytes(result)
+        return result.encode("latin-1")
+    except Exception:
+        try:
+            return bytes(pdf.output())
+        except Exception:
+            buf = io.BytesIO()
+            pdf.output(buf)
+            buf.seek(0)
+            return buf.read()
+
 # ─── Login / Register / Logout ────────────────────────────────
 @app.route("/", methods=["GET","POST"])
 def login():
@@ -118,7 +138,7 @@ def login():
                 "revenue_goal": user.revenue_goal or 0,
                 "low_stock_threshold": user.low_stock_threshold or 10,
                 "expiry_warning_days": user.expiry_warning_days or 30,
-                "db_name": "Neon PostgreSQL",
+                "db_name": "PostgreSQL",
             })
             return redirect("/dashboard")
         return render_template("login.html", error="Invalid username or password")
@@ -272,252 +292,332 @@ def billing():
         if request.form.get("new_customer"):
             if not Customer.query.filter_by(admin_id=aid, name=customer).first():
                 db.session.add(Customer(admin_id=aid, name=customer))
-        selected = request.form.getlist("product")
-        shop_name=adm.supermarket_name; shop_addr=adm.shop_address or ""
-        shop_phone=adm.shop_phone or ""; shop_gst=adm.shop_gst or ""
+        selected  = request.form.getlist("product")
+        shop_name  = adm.supermarket_name
+        shop_addr  = adm.shop_address or ""
+        shop_phone = adm.shop_phone or ""
+        shop_gst   = adm.shop_gst or ""
 
-        pdf = FPDF(); pdf.add_page(); pdf.set_auto_page_break(auto=True,margin=15)
-        pdf.set_font("Arial","B",16); pdf.cell(0,8,shop_name.upper(),ln=1,align="C")
+        # ── Build PDF entirely in memory ──────────────────────
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+
+        # Header
+        pdf.set_font("Arial","B",16)
+        pdf.cell(0,8,shop_name.upper(),ln=1,align="C")
         pdf.set_font("Arial","",10)
         if shop_addr:  pdf.cell(0,6,f"Address: {shop_addr}",ln=1,align="C")
         if shop_phone: pdf.cell(0,6,f"Phone: {shop_phone}",ln=1,align="C")
         if shop_gst:   pdf.cell(0,6,f"GST: {shop_gst}",ln=1,align="C")
-        pdf.ln(4); pdf.set_font("Arial","B",12); pdf.cell(0,8,"CASH BILL",ln=1,align="C")
-        pdf.ln(5); pdf.set_font("Arial","",10)
-        today_str = datetime.today().strftime("%d-%m-%Y")
-        pdf.cell(100,6,f"Customer: {customer}",ln=0); pdf.cell(0,6,f"Date: {today_str}",ln=1)
-        pdf.ln(5); pdf.set_font("Arial","B",10)
-        pdf.cell(10,8,"#",1); pdf.cell(65,8,"Product",1); pdf.cell(20,8,"Qty",1)
-        pdf.cell(30,8,"Rate",1); pdf.cell(20,8,"GST",1); pdf.cell(30,8,"Total",1,ln=1)
+        pdf.ln(4)
+        pdf.set_font("Arial","B",12)
+        pdf.cell(0,8,"CASH BILL",ln=1,align="C")
+        pdf.ln(5)
         pdf.set_font("Arial","",10)
-        grand_total=0; sno=1
-        for pid in selected:
-            qty = int(request.form.get(f"qty_{pid}",0))
-            if qty <= 0: continue
-            p = Product.query.filter_by(id=pid,admin_id=aid).first()
-            if not p: continue
-            amount=p.price*qty; gst=amount*0.05; total=amount+gst; grand_total+=total
-            db.session.add(Sale(admin_id=aid,customer=customer,product=p.brand,quantity=qty,
-                gst=gst,total=total,sale_date=datetime.today().date(),sale_time=datetime.now().time()))
-            p.stock -= qty
-            pdf.cell(10,8,str(sno),1); pdf.cell(65,8,p.brand[:30],1); pdf.cell(20,8,str(qty),1)
-            pdf.cell(30,8,f"{p.price:.2f}",1); pdf.cell(20,8,f"{gst:.2f}",1); pdf.cell(30,8,f"{total:.2f}",1,ln=1)
-            sno+=1
-        pdf.set_font("Arial","B",11); pdf.cell(145,8,"Grand Total",1); pdf.cell(30,8,f"Rs.{grand_total:.2f}",1,ln=1)
-        pdf.ln(10); pdf.set_font("Arial","I",10)
-        pdf.cell(0,8,f"Thank you for shopping at {shop_name}!",ln=1,align="C")
-        db.session.commit()
-        safe_name=re.sub(r'[^a-zA-Z0-9_]','_',shop_name)
-        safe_cust=re.sub(r'[^a-zA-Z0-9_]','_',customer)
-        filename=f"{safe_name}_{safe_cust}_{datetime.today().strftime('%Y%m%d')}.pdf"
-        buf = io.BytesIO(pdf.output(dest="S").encode("latin-1")); buf.seek(0)
-        return send_file(buf,as_attachment=True,download_name=filename,mimetype="application/pdf")
+        today_str = datetime.today().strftime("%d-%m-%Y")
+        pdf.cell(100,6,f"Customer: {customer}",ln=0)
+        pdf.cell(0,6,f"Date: {today_str}",ln=1)
+        pdf.ln(5)
 
-    return render_template("billing.html",customers=custs,products=prods,alert_count=get_alert_count())
+        # Table header
+        pdf.set_font("Arial","B",10)
+        pdf.cell(10,8,"#",1)
+        pdf.cell(65,8,"Product",1)
+        pdf.cell(20,8,"Qty",1)
+        pdf.cell(30,8,"Rate",1)
+        pdf.cell(20,8,"GST",1)
+        pdf.cell(30,8,"Total",1,ln=1)
+        pdf.set_font("Arial","",10)
+
+        grand_total = 0; sno = 1
+        for pid in selected:
+            qty = int(request.form.get(f"qty_{pid}", 0))
+            if qty <= 0: continue
+            p = Product.query.filter_by(id=pid, admin_id=aid).first()
+            if not p: continue
+            amount = p.price * qty
+            gst    = amount * 0.05
+            total  = amount + gst
+            grand_total += total
+
+            # Save sale record
+            db.session.add(Sale(
+                admin_id=aid, customer=customer, product=p.brand,
+                quantity=qty, gst=gst, total=total,
+                sale_date=datetime.today().date(),
+                sale_time=datetime.now().time()
+            ))
+            p.stock -= qty
+
+            # PDF row
+            pdf.cell(10,8,str(sno),1)
+            pdf.cell(65,8,p.brand[:30],1)
+            pdf.cell(20,8,str(qty),1)
+            pdf.cell(30,8,f"{p.price:.2f}",1)
+            pdf.cell(20,8,f"{gst:.2f}",1)
+            pdf.cell(30,8,f"{total:.2f}",1,ln=1)
+            sno += 1
+
+        # Grand total row
+        pdf.set_font("Arial","B",11)
+        pdf.cell(145,8,"Grand Total",1)
+        pdf.cell(30,8,f"Rs.{grand_total:.2f}",1,ln=1)
+        pdf.ln(10)
+        pdf.set_font("Arial","I",10)
+        pdf.cell(0,8,f"Thank you for shopping at {shop_name}!",ln=1,align="C")
+
+        db.session.commit()
+
+        # ── Stream PDF from memory — NO disk write ─────────────
+        safe_name = re.sub(r'[^a-zA-Z0-9_]','_', shop_name)
+        safe_cust = re.sub(r'[^a-zA-Z0-9_]','_', customer)
+        filename  = f"{safe_name}_{safe_cust}_{datetime.today().strftime('%Y%m%d')}.pdf"
+
+        buf = io.BytesIO(pdf_to_bytes(pdf))
+        buf.seek(0)
+        return send_file(
+            buf,
+            as_attachment=True,
+            download_name=filename,
+            mimetype="application/pdf"
+        )
+
+    return render_template("billing.html", customers=custs, products=prods, alert_count=get_alert_count())
 
 @app.route("/search_products")
 @login_required
 def search_products():
     q = request.args.get("q","").lower()
     prods = Product.query.filter_by(admin_id=session["admin_id"]).filter(
-        Product.stock>0,Product.brand.ilike(f"%{q}%")).limit(10).all()
+        Product.stock>0, Product.brand.ilike(f"%{q}%")).limit(10).all()
     return jsonify({"products":[{"id":p.id,"brand":p.brand,"price":p.price,"stock":p.stock} for p in prods]})
 
 # ─── Sales ────────────────────────────────────────────────────
 @app.route("/sales")
 @login_required
 def sales():
-    aid=session["admin_id"]
-    from_date=request.args.get("from_date",""); to_date=request.args.get("to_date","")
-    search_cust=request.args.get("search","").strip()
+    aid = session["admin_id"]
+    from_date   = request.args.get("from_date","")
+    to_date     = request.args.get("to_date","")
+    search_cust = request.args.get("search","").strip()
     query = Sale.query.filter_by(admin_id=aid)
     if from_date and to_date:
         query = query.filter(Sale.sale_date.between(from_date,to_date))
     if search_cust:
         query = query.filter(Sale.customer.ilike(f"%{search_cust}%"))
-    rows = query.order_by(Sale.sale_date.desc(),Sale.sale_time.desc()).all()
+    rows = query.order_by(Sale.sale_date.desc(), Sale.sale_time.desc()).all()
     from collections import defaultdict
     grouped = defaultdict(lambda:{"customer":"","product":[],"quantity":[],"gst":0,"total":0,"sale_date":"","sale_time":""})
     for r in rows:
-        key=(r.customer,str(r.sale_date),str(r.sale_time))
-        g=grouped[key]; g["customer"]=r.customer; g["product"].append(r.product)
-        g["quantity"].append(str(r.quantity)); g["gst"]+=r.gst; g["total"]+=r.total
-        g["sale_date"]=str(r.sale_date); g["sale_time"]=str(r.sale_time)
-    data=[{**v,"product":", ".join(v["product"]),"quantity":", ".join(v["quantity"])} for v in grouped.values()]
-    data.sort(key=lambda x:(x["sale_date"],x["sale_time"]),reverse=True)
-    grand_total=sum(r.total for r in rows)
-    return render_template("sales.html",data=data,count=len(data),from_date=from_date,
-        to_date=to_date,search_cust=search_cust,grand_total=grand_total,alert_count=get_alert_count())
+        key = (r.customer, str(r.sale_date), str(r.sale_time))
+        g = grouped[key]
+        g["customer"] = r.customer; g["product"].append(r.product)
+        g["quantity"].append(str(r.quantity)); g["gst"] += r.gst; g["total"] += r.total
+        g["sale_date"] = str(r.sale_date); g["sale_time"] = str(r.sale_time)
+    data = [{**v,"product":", ".join(v["product"]),"quantity":", ".join(v["quantity"])} for v in grouped.values()]
+    data.sort(key=lambda x:(x["sale_date"],x["sale_time"]), reverse=True)
+    grand_total = sum(r.total for r in rows)
+    return render_template("sales.html", data=data, count=len(data),
+        from_date=from_date, to_date=to_date, search_cust=search_cust,
+        grand_total=grand_total, alert_count=get_alert_count())
 
 @app.route("/download_sales")
 @login_required
 def download_sales():
-    aid=session["admin_id"]
-    from_date=request.args.get("from_date",""); to_date=request.args.get("to_date","")
-    fmt=request.args.get("format","xlsx")
-    query=Sale.query.filter_by(admin_id=aid)
+    aid       = session["admin_id"]
+    from_date = request.args.get("from_date","")
+    to_date   = request.args.get("to_date","")
+    fmt       = request.args.get("format","xlsx")
+    query = Sale.query.filter_by(admin_id=aid)
     if from_date and to_date:
-        query=query.filter(Sale.sale_date.between(from_date,to_date))
-    rows=query.order_by(Sale.sale_date.desc()).all()
-    df=pd.DataFrame([{"customer":r.customer,"product":r.product,"quantity":r.quantity,
-        "gst":r.gst,"total":r.total,"sale_date":r.sale_date,"sale_time":r.sale_time} for r in rows])
-    buf=io.BytesIO()
-    if fmt=="csv":
-        df.to_csv(buf,index=False); buf.seek(0)
-        return send_file(buf,as_attachment=True,download_name="sales.csv",mimetype="text/csv")
-    df.to_excel(buf,index=False); buf.seek(0)
-    return send_file(buf,as_attachment=True,download_name="sales.xlsx",
+        query = query.filter(Sale.sale_date.between(from_date,to_date))
+    rows = query.order_by(Sale.sale_date.desc()).all()
+    df = pd.DataFrame([{
+        "customer":r.customer,"product":r.product,"quantity":r.quantity,
+        "gst":r.gst,"total":r.total,"sale_date":r.sale_date,"sale_time":r.sale_time
+    } for r in rows])
+    buf = io.BytesIO()
+    if fmt == "csv":
+        df.to_csv(buf, index=False); buf.seek(0)
+        return send_file(buf, as_attachment=True, download_name="sales.csv", mimetype="text/csv")
+    df.to_excel(buf, index=False); buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="sales.xlsx",
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ─── Alerts ───────────────────────────────────────────────────
 @app.route("/alerts")
 @login_required
 def alerts():
-    aid=session["admin_id"]; adm=current_admin()
-    threshold=adm.low_stock_threshold; exp_days=adm.expiry_warning_days
-    cutoff=datetime.today().date()+timedelta(days=exp_days)
-    low_prods = Product.query.filter_by(admin_id=aid).filter(Product.stock<threshold).all()
-    exp_prods  = Product.query.filter_by(admin_id=aid).filter(
-        Product.expiry!=None,Product.expiry<=cutoff,Product.expiry>=datetime.today().date()).all()
+    aid       = session["admin_id"]; adm = current_admin()
+    threshold = adm.low_stock_threshold; exp_days = adm.expiry_warning_days
+    cutoff    = datetime.today().date() + timedelta(days=exp_days)
+    low_prods = Product.query.filter_by(admin_id=aid).filter(Product.stock < threshold).all()
+    exp_prods = Product.query.filter_by(admin_id=aid).filter(
+        Product.expiry != None, Product.expiry <= cutoff,
+        Product.expiry >= datetime.today().date()).all()
     def to_row(p):
-        days_left=(p.expiry-datetime.today().date()).days if p.expiry else None
-        return (p.brand,p.stock,str(p.expiry) if p.expiry else None,days_left)
-    low_stock=[to_row(p) for p in low_prods]; expiring=[to_row(p) for p in exp_prods]
-    seen=set(); all_alerts=[]
-    for row in low_stock+expiring:
+        days_left = (p.expiry - datetime.today().date()).days if p.expiry else None
+        return (p.brand, p.stock, str(p.expiry) if p.expiry else None, days_left)
+    low_stock = [to_row(p) for p in low_prods]
+    expiring  = [to_row(p) for p in exp_prods]
+    seen = set(); all_alerts = []
+    for row in low_stock + expiring:
         if row[0] not in seen: all_alerts.append(row); seen.add(row[0])
-    return render_template("alerts.html",low_stock=low_stock,expiring=expiring,
-        all_alerts=all_alerts,threshold=threshold,exp_days=exp_days,alert_count=get_alert_count())
+    return render_template("alerts.html", low_stock=low_stock, expiring=expiring,
+        all_alerts=all_alerts, threshold=threshold, exp_days=exp_days, alert_count=get_alert_count())
 
 # ─── Reports ──────────────────────────────────────────────────
-@app.route("/reports",methods=["GET","POST"])
+@app.route("/reports", methods=["GET","POST"])
 @login_required
 def reports():
-    aid=session["admin_id"]; chart_path=None; message=None
-    from_date=request.args.get("from_date",""); to_date=request.args.get("to_date","")
-    chart_type=request.args.get("chart_type","bar")
+    aid        = session["admin_id"]; chart_path = None; message = None
+    from_date  = request.args.get("from_date","")
+    to_date    = request.args.get("to_date","")
+    chart_type = request.args.get("chart_type","bar")
     charts_dir = os.path.join(app.root_path, "static", "charts")
     os.makedirs(charts_dir, exist_ok=True)
     chart_file = os.path.join(charts_dir, "report.png")
-    if request.method=="POST" and "dataset" in request.files:
-        f=request.files["dataset"]
+
+    if request.method == "POST" and "dataset" in request.files:
+        f = request.files["dataset"]
         if f.filename:
-            content=f.read().decode("utf-8"); df=pd.read_csv(io.StringIO(content))
-            if len(df.columns)>=2:
-                x,y=df.columns[0],df.columns[1]
-                fig,ax=plt.subplots(figsize=(10,5)); ax.bar(df[x],df[y])
-                ax.set_xlabel(x); ax.set_ylabel(y); ax.set_title("Custom Dataset")
-                plt.xticks(rotation=45,ha="right"); plt.tight_layout()
-                plt.savefig(chart_file); plt.close()
-                chart_path="static/charts/report.png"
+            content = f.read().decode("utf-8")
+            df = pd.read_csv(io.StringIO(content))
+            if len(df.columns) >= 2:
+                x, y = df.columns[0], df.columns[1]
+                fig, ax = plt.subplots(figsize=(10,5))
+                ax.bar(df[x], df[y]); ax.set_xlabel(x); ax.set_ylabel(y)
+                ax.set_title("Custom Dataset"); plt.xticks(rotation=45, ha="right")
+                plt.tight_layout(); plt.savefig(chart_file); plt.close()
+                chart_path = "static/charts/report.png"
             else:
-                message="Dataset needs at least 2 columns"
+                message = "Dataset needs at least 2 columns"
     else:
-        query=Sale.query.filter_by(admin_id=aid)
+        query = Sale.query.filter_by(admin_id=aid)
         if from_date and to_date:
-            query=query.filter(Sale.sale_date.between(from_date,to_date))
-        rows=query.all()
+            query = query.filter(Sale.sale_date.between(from_date, to_date))
+        rows = query.all()
         if rows:
-            df=pd.DataFrame([{"product":r.product,"quantity":r.quantity} for r in rows])
-            df=df.groupby("product")["quantity"].sum().reset_index().sort_values("quantity",ascending=False)
-            fig,ax=plt.subplots(figsize=(10,5))
-            if chart_type=="pie":
-                ax.pie(df["quantity"],labels=df["product"],autopct='%1.1f%%')
-            elif chart_type=="line":
-                ax.plot(df["product"],df["quantity"],marker='o',color='#3b82f6')
-                ax.fill_between(range(len(df)),df["quantity"],alpha=0.2)
-                ax.set_xticks(range(len(df))); ax.set_xticklabels(df["product"],rotation=45,ha="right")
+            df = pd.DataFrame([{"product":r.product,"quantity":r.quantity} for r in rows])
+            df = df.groupby("product")["quantity"].sum().reset_index().sort_values("quantity", ascending=False)
+            fig, ax = plt.subplots(figsize=(10,5))
+            if chart_type == "pie":
+                ax.pie(df["quantity"], labels=df["product"], autopct='%1.1f%%')
+            elif chart_type == "line":
+                ax.plot(df["product"], df["quantity"], marker='o', color='#3b82f6')
+                ax.fill_between(range(len(df)), df["quantity"], alpha=0.2)
+                ax.set_xticks(range(len(df))); ax.set_xticklabels(df["product"], rotation=45, ha="right")
             else:
-                ax.bar(df["product"],df["quantity"],color='#3b82f6')
-                ax.set_xlabel("Product"); ax.set_ylabel("Units Sold"); plt.xticks(rotation=45,ha="right")
-            title=f"Sales Report ({from_date} to {to_date})" if from_date and to_date else "Sales Report (All Time)"
+                ax.bar(df["product"], df["quantity"], color='#3b82f6')
+                ax.set_xlabel("Product"); ax.set_ylabel("Units Sold")
+                plt.xticks(rotation=45, ha="right")
+            title = f"Sales Report ({from_date} to {to_date})" if from_date and to_date else "Sales Report (All Time)"
             ax.set_title(title); plt.tight_layout()
             plt.savefig(chart_file); plt.close()
-            chart_path="static/charts/report.png"
-            session["report_from"]=from_date; session["report_to"]=to_date
+            chart_path = "static/charts/report.png"
+            session["report_from"] = from_date; session["report_to"] = to_date
         else:
-            message="No sales data available."
-    return render_template("reports.html",chart_path=chart_path,message=message,
-        from_date=from_date,to_date=to_date,chart_type=chart_type,alert_count=get_alert_count())
+            message = "No sales data available."
+
+    return render_template("reports.html", chart_path=chart_path, message=message,
+        from_date=from_date, to_date=to_date, chart_type=chart_type, alert_count=get_alert_count())
 
 @app.route("/download_report_pdf")
 @login_required
 def download_report_pdf():
     chart_file = os.path.join(app.root_path, "static", "charts", "report.png")
     if not os.path.exists(chart_file):
-        flash("Generate a chart first.","error"); return redirect("/reports")
-    from_date=session.get("report_from",""); to_date=session.get("report_to","")
-    sub=f"Sales Report ({from_date} to {to_date})" if from_date and to_date else f"Sales Report - {datetime.today().strftime('%B %Y')}"
-    buf=io.BytesIO(); doc=SimpleDocTemplate(buf,pagesize=A4)
-    styles=getSampleStyleSheet(); els=[]
-    els.append(Paragraph(session.get("supermarket","Supermarket"),styles["Title"]))
-    els.append(Spacer(1,10)); els.append(Paragraph(sub,styles["Heading2"]))
-    els.append(Spacer(1,20)); els.append(Image(chart_file,width=400,height=250))
+        flash("Generate a chart first.", "error"); return redirect("/reports")
+    from_date = session.get("report_from","")
+    to_date   = session.get("report_to","")
+    sub = f"Sales Report ({from_date} to {to_date})" if from_date and to_date else \
+          f"Sales Report - {datetime.today().strftime('%B %Y')}"
+    buf    = io.BytesIO()
+    doc    = SimpleDocTemplate(buf, pagesize=A4)
+    styles = getSampleStyleSheet(); els = []
+    els.append(Paragraph(session.get("supermarket","Supermarket"), styles["Title"]))
+    els.append(Spacer(1,10))
+    els.append(Paragraph(sub, styles["Heading2"]))
+    els.append(Spacer(1,20))
+    els.append(Image(chart_file, width=400, height=250))
     doc.build(els); buf.seek(0)
-    return send_file(buf,as_attachment=True,download_name="sales_report.pdf",mimetype="application/pdf")
+    return send_file(buf, as_attachment=True, download_name="sales_report.pdf", mimetype="application/pdf")
 
 # ─── Predictions ──────────────────────────────────────────────
 @app.route("/predictions")
 @login_required
 def predictions():
-    from ml.model import (predict_revenue_next_7_days,predict_product_demand,
-                          get_product_trends,get_restock_recommendations)
-    aid=session["admin_id"]; adm=current_admin()
-    revenue_pred=predict_revenue_next_7_days(aid)
-    demand=predict_product_demand(aid)
-    trends=get_product_trends(aid)
-    restock=get_restock_recommendations(aid)
-    goal=adm.revenue_goal or 0; now=datetime.today()
-    month_rev=db.session.query(db.func.coalesce(db.func.sum(Sale.total),0)).filter(
-        Sale.admin_id==aid,
-        db.func.extract('year',Sale.sale_date)==now.year,
-        db.func.extract('month',Sale.sale_date)==now.month).scalar()
-    days_in_month=calendar.monthrange(now.year,now.month)[1]; day_of_month=now.day
-    daily_avg=(month_rev/day_of_month) if day_of_month>0 else 0
-    projected=daily_avg*days_in_month
-    goal_pct=min(100,round((month_rev/goal*100),1)) if goal>0 else 0
-    on_track=projected>=goal if goal>0 else None
-    return render_template("predictions.html",revenue_pred=revenue_pred,demand=demand,
-        trends=trends,restock=restock,goal=goal,month_rev=month_rev,goal_pct=goal_pct,
-        projected=projected,on_track=on_track,alert_count=get_alert_count())
+    from ml.model import (predict_revenue_next_7_days, predict_product_demand,
+                          get_product_trends, get_restock_recommendations)
+    aid = session["admin_id"]; adm = current_admin()
+    revenue_pred = predict_revenue_next_7_days(aid)
+    demand       = predict_product_demand(aid)
+    trends       = get_product_trends(aid)
+    restock      = get_restock_recommendations(aid)
+    goal = adm.revenue_goal or 0; now = datetime.today()
+    month_rev = db.session.query(db.func.coalesce(db.func.sum(Sale.total),0)).filter(
+        Sale.admin_id == aid,
+        db.func.extract('year',  Sale.sale_date) == now.year,
+        db.func.extract('month', Sale.sale_date) == now.month).scalar()
+    days_in_month = calendar.monthrange(now.year, now.month)[1]
+    day_of_month  = now.day
+    daily_avg     = (month_rev / day_of_month) if day_of_month > 0 else 0
+    projected     = daily_avg * days_in_month
+    goal_pct      = min(100, round((month_rev / goal * 100), 1)) if goal > 0 else 0
+    on_track      = projected >= goal if goal > 0 else None
+    return render_template("predictions.html",
+        revenue_pred=revenue_pred, demand=demand, trends=trends, restock=restock,
+        goal=goal, month_rev=month_rev, goal_pct=goal_pct,
+        projected=projected, on_track=on_track, alert_count=get_alert_count())
 
 # ─── Settings ─────────────────────────────────────────────────
-@app.route("/settings",methods=["GET","POST"])
+@app.route("/settings", methods=["GET","POST"])
 @login_required
 def settings():
-    adm=current_admin()
-    if request.method=="POST":
-        action=request.form.get("action")
-        if action=="update_shop":
-            adm.supermarket_name=request.form.get("supermarket_name","").strip()
-            adm.shop_address=request.form.get("address","").strip()
-            adm.shop_phone=request.form.get("phone","").strip()
-            adm.shop_gst=request.form.get("gst_no","").strip()
-            db.session.commit(); session["supermarket"]=adm.supermarket_name
+    adm = current_admin()
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "update_shop":
+            adm.supermarket_name = request.form.get("supermarket_name","").strip()
+            adm.shop_address     = request.form.get("address","").strip()
+            adm.shop_phone       = request.form.get("phone","").strip()
+            adm.shop_gst         = request.form.get("gst_no","").strip()
+            db.session.commit(); session["supermarket"] = adm.supermarket_name
             flash("Shop info updated","success")
-        elif action=="change_password":
-            old=request.form.get("old_password",""); new=request.form.get("new_password",""); cfm=request.form.get("confirm_password","")
-            if not check_password_hash(adm.password,old): flash("Current password is incorrect","error")
-            elif new!=cfm: flash("New passwords do not match","error")
-            elif len(new)<6: flash("Password must be at least 6 characters","error")
+        elif action == "change_password":
+            old = request.form.get("old_password","")
+            new = request.form.get("new_password","")
+            cfm = request.form.get("confirm_password","")
+            if not check_password_hash(adm.password, old):
+                flash("Current password is incorrect","error")
+            elif new != cfm:
+                flash("New passwords do not match","error")
+            elif len(new) < 6:
+                flash("Password must be at least 6 characters","error")
             else:
-                adm.password=generate_password_hash(new); db.session.commit()
+                adm.password = generate_password_hash(new); db.session.commit()
                 flash("Password changed successfully","success")
-        elif action=="update_prefs":
-            adm.revenue_goal=float(request.form.get("revenue_goal",0) or 0)
-            adm.low_stock_threshold=int(request.form.get("low_stock_threshold",10) or 10)
-            adm.expiry_warning_days=int(request.form.get("expiry_warning_days",30) or 30)
+        elif action == "update_prefs":
+            adm.revenue_goal        = float(request.form.get("revenue_goal",0) or 0)
+            adm.low_stock_threshold = int(request.form.get("low_stock_threshold",10) or 10)
+            adm.expiry_warning_days = int(request.form.get("expiry_warning_days",30) or 30)
             db.session.commit()
-            session.update({"revenue_goal":adm.revenue_goal,
-                "low_stock_threshold":adm.low_stock_threshold,
-                "expiry_warning_days":adm.expiry_warning_days})
+            session.update({
+                "revenue_goal": adm.revenue_goal,
+                "low_stock_threshold": adm.low_stock_threshold,
+                "expiry_warning_days": adm.expiry_warning_days
+            })
             flash("Preferences updated","success")
         return redirect("/settings")
-    s_data={"admin_name":adm.admin_name,"supermarket_name":adm.supermarket_name,
-        "address":adm.shop_address or "","phone":adm.shop_phone or "","gst_no":adm.shop_gst or "",
-        "revenue_goal":adm.revenue_goal or 0,"low_stock_threshold":adm.low_stock_threshold or 10,
-        "expiry_warning_days":adm.expiry_warning_days or 30}
-    return render_template("settings.html",s=s_data,alert_count=get_alert_count())
+    s_data = {
+        "admin_name": adm.admin_name, "supermarket_name": adm.supermarket_name,
+        "address": adm.shop_address or "", "phone": adm.shop_phone or "",
+        "gst_no": adm.shop_gst or "", "revenue_goal": adm.revenue_goal or 0,
+        "low_stock_threshold": adm.low_stock_threshold or 10,
+        "expiry_warning_days": adm.expiry_warning_days or 30
+    }
+    return render_template("settings.html", s=s_data, alert_count=get_alert_count())
 
 if __name__ == "__main__":
     app.run()
